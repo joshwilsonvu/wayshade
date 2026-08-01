@@ -1,5 +1,6 @@
 """Wayshade: a Python-controlled shader wallpaper renderer for Wayland."""
 
+from .egl import EglPresentationError, EglUnavailableError
 from .wallpaper import WallpaperSurface, WallpaperSurfaceError, create_wallpaper
 from .wayland import WaylandUnavailableError, connect
 from .wayland_session import (
@@ -9,6 +10,8 @@ from .wayland_session import (
 )
 
 __all__ = [
+    "EglPresentationError",
+    "EglUnavailableError",
     "MissingWaylandGlobalError",
     "WallpaperSurface",
     "WallpaperSurfaceError",

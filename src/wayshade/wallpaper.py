@@ -11,6 +11,7 @@ from ._protocol.wlr_layer_shell_unstable_v1.zwlr_layer_shell_v1 import (
 from ._protocol.wlr_layer_shell_unstable_v1.zwlr_layer_surface_v1 import (
     ZwlrLayerSurfaceV1,
 )
+from .egl import EglPresenter
 from .wayland_session import WaylandGlobals, discover_globals
 
 
@@ -20,23 +21,101 @@ class WallpaperSurfaceError(RuntimeError):
 
 @dataclass
 class WallpaperSurface:
-    """A configured, fullscreen background layer surface.
-
-    The surface has no buffer attached yet. EGL/Wayland buffer creation is the
-    next Phase 0 step.
-    """
+    """A configured, fullscreen background layer surface."""
 
     globals: WaylandGlobals
     surface: Any
     layer_surface: Any
     width: int
     height: int
+    presenter: EglPresenter | None = None
+    frame_callback: Any = None
+    frame_pending: bool = False
     closed: bool = False
 
+    def _request_frame(self) -> None:
+        callback = self.surface.frame()
+
+        def on_done(_callback: Any, _callback_data: int) -> None:
+            self.frame_pending = False
+            self.frame_callback = None
+            callback.destroy()
+
+        callback.dispatcher["done"] = on_done
+        self.frame_callback = callback
+        self.frame_pending = True
+
+    def present_solid(
+        self, color: tuple[float, float, float, float] = (0.08, 0.08, 0.12, 1.0)
+    ) -> None:
+        """Create EGL, then present one paced solid-color frame.
+
+        Call :meth:`wait_for_frame` before presenting the next frame. The first
+        frame can be presented immediately; subsequent frames are rejected
+        while the compositor's callback is outstanding.
+        """
+
+        if self.closed:
+            raise WallpaperSurfaceError("Wallpaper surface is closed")
+        if self.frame_pending:
+            raise WallpaperSurfaceError(
+                "A frame is already pending; call wait_for_frame() first"
+            )
+        if self.presenter is None:
+            self.presenter = EglPresenter(
+                self.globals.display, self.surface, self.width, self.height
+            )
+        self._request_frame()
+        try:
+            self.presenter.clear_and_swap(color)
+        except Exception:
+            self.frame_callback.destroy()
+            self.frame_callback = None
+            self.frame_pending = False
+            raise
+
+    def offscreen_test(self) -> None:
+        """Run the backend's offscreen texture sampling feasibility probe."""
+
+        if self.closed:
+            raise WallpaperSurfaceError("Wallpaper surface is closed")
+        if self.frame_pending:
+            raise WallpaperSurfaceError(
+                "A frame is already pending; call wait_for_frame() first"
+            )
+        if self.presenter is None:
+            self.presenter = EglPresenter(
+                self.globals.display, self.surface, self.width, self.height
+            )
+        self._request_frame()
+        try:
+            self.presenter.offscreen_test_and_swap()
+        except Exception:
+            self.frame_callback.destroy()
+            self.frame_callback = None
+            self.frame_pending = False
+            raise
+
+    def wait_for_frame(self) -> None:
+        """Block until the compositor permits the next frame."""
+
+        while self.frame_pending:
+            if self.globals.display.dispatch(block=True) < 0:
+                self.frame_pending = False
+                raise WallpaperSurfaceError(
+                    "Wayland dispatch failed while waiting for a frame"
+                )
+
     def close(self) -> None:
-        """Destroy the layer surface and close its Wayland connection."""
+        """Release EGL, then destroy the layer surface and Wayland connection."""
 
         if not self.closed:
+            if self.frame_callback is not None:
+                self.frame_callback.destroy()
+                self.frame_callback = None
+                self.frame_pending = False
+            if self.presenter is not None:
+                self.presenter.close()
             self.layer_surface.destroy()
             self.surface.destroy()
             self.globals.close()
@@ -69,6 +148,7 @@ def create_wallpaper(
         def on_configure(
             _layer: ZwlrLayerSurfaceV1, serial: int, width: int, height: int
         ) -> None:
+            assert layer_surface is not None
             layer_surface.ack_configure(serial)
             state.update(width=width, height=height, configured=True)
 
@@ -108,6 +188,12 @@ def create_wallpaper(
             int(state["height"]),
         )
     except Exception:
+        layer_surface = locals().get("layer_surface")
+        surface = locals().get("surface")
+        if layer_surface is not None:
+            layer_surface.destroy()
+        if surface is not None:
+            surface.destroy()
         globals.close()
         raise
 

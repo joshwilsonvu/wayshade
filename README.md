@@ -46,8 +46,10 @@ layer shell.
 
 The project is partway through **Phase 0: Graphics feasibility spike** from
 [`plan.md`](plan.md). The dependency setup, protocol binding, compositor
-connection, global discovery, and empty wallpaper surface are complete. EGL
-and actual pixel presentation are not implemented yet.
+connection, global discovery, wallpaper surface, EGL context creation,
+compositor-paced presentation, and offscreen texture sampling are implemented.
+The project is ready to move from the feasibility spike into the rendering
+core.
 
 ### Working pieces
 
@@ -76,8 +78,12 @@ print(wallpaper.width, wallpaper.height)
 wallpaper.close()
 ```
 
-`create_wallpaper()` currently creates and configures an empty surface. It does
-not attach a buffer, create an EGL context, render, or present pixels.
+`create_wallpaper()` creates and configures a wallpaper surface. Calling
+`wallpaper.present_solid()` lazily creates the Wayland-EGL window, an RGBA8 EGL
+context/surface, clears the framebuffer, and swaps one solid-color frame. Call
+`wallpaper.wait_for_frame()` before presenting the next frame; it blocks on the
+Wayland frame callback instead of busy-looping. The surface keeps the EGL
+resources alive until `close()` destroys them before the Wayland objects.
 
 The live Niri validation completed so far has confirmed:
 
@@ -118,7 +124,7 @@ To validate the current Wayland surface path against a running compositor:
 
 ```sh
 uv run python -c \
-  'from wayshade import create_wallpaper; w = create_wallpaper(); print(w.width, w.height); w.close()'
+  'from wayshade import create_wallpaper; w = create_wallpaper(); print(w.width, w.height); w.present_solid(); w.close()'
 ```
 
 A compositor session with `wlr-layer-shell-unstable-v1` support is required.
@@ -128,31 +134,24 @@ does not provide or select an OpenGL driver. GPU driver selection remains the
 host distribution's responsibility, and Wayshade does not require a `nixGL`
 wrapper.
 
-### Next implementation step: EGL presentation
+### Next implementation step: Phase 1 rendering core
 
-Continue Phase 0 in this order:
+The Phase 0 feasibility spike is complete. Live validation on Niri confirmed:
+background layering, full-output coverage at `2048 × 1280`, EGL presentation,
+frame callbacks, offscreen framebuffer rendering, texture sampling, and clean
+resource release.
 
-1. Create a `wl_egl_window` for `WallpaperSurface.surface` using the negotiated
-   width and height.
-2. Create an EGL display from the PyWayland `wl_display` pointer using the
-   `EGL_PLATFORM_WAYLAND_KHR` path, or the native platform equivalent exposed by
-   the installed EGL implementation.
-3. Initialize EGL and choose a window-compatible config with an RGBA8 color
-   buffer.
-4. Create an EGL context and EGL window surface.
-5. Make the context current and clear the framebuffer to a solid color.
-6. Swap buffers and verify that the result appears behind normal application
-   windows as a wallpaper.
-7. Add a `wl_surface.frame` callback and make the draw loop wait for compositor
-   presentation rather than busy-looping.
-8. Ensure cleanup destroys the EGL surface/context, the `wl_egl_window`, the
-   layer surface, and the Wayland display in the correct order.
+Begin Phase 1 with the explicit renderer/session foundation:
 
-Keep this step as a focused feasibility implementation. Do not build the final
-`Renderer`, `Shader`, `Image`, or `Target` API until the native presentation
-path is demonstrated. The next useful manual checks are the Phase 0 checks in
-`plan.md`: background layering, full-output coverage, no busy-looping, and
-clean resource release.
+1. Define the renderer and wallpaper target ownership model.
+2. Add output selection by default/primary output and numeric index.
+3. Implement fragment shader loading from strings and files.
+4. Implement fullscreen rendering and scalar/vector uniform state.
+5. Move the current low-level presentation behavior behind that renderer API.
+
+The internal `offscreen_test()` and `present_solid()` methods remain feasibility
+helpers until the public `Renderer`, `Shader`, `Image`, and `Target` types are
+implemented.
 
 ### Decisions already made
 
@@ -170,7 +169,8 @@ clean resource release.
 
 ### Known limitations
 
-- No EGL/OpenGL context or buffer presentation yet.
+- No higher-level renderer, shader, or image API yet; the low-level EGL,
+  frame-callback, and offscreen texture probes are complete.
 - No shader compilation or uniform handling.
 - No image loading into GPU textures.
 - No frame callback loop.

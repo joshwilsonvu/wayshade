@@ -10,7 +10,9 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        waylandLibraries = [ pkgs.wayland ];
+        # libglvnd supplies the EGL/OpenGL loader, not a GPU driver. Driver
+        # selection remains the host distribution's responsibility.
+        runtimeLibraries = [ pkgs.wayland pkgs.libglvnd ];
       in {
         devShells.default = pkgs.mkShell {
           packages = [
@@ -26,7 +28,7 @@
           # the repository's development shell; do not alter the user's global
           # linker path or select a Nix OpenGL driver for the host.
           shellHook = ''
-            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath waylandLibraries}:$LD_LIBRARY_PATH"
+            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibraries}:$LD_LIBRARY_PATH"
           '';
         };
       });
