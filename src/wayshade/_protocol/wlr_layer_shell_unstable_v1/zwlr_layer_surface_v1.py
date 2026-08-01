@@ -36,7 +36,7 @@ from pywayland.protocol_core import (
     Resource,
 )
 
-from ..xdg_shell import XdgPopup
+from pywayland.protocol.xdg_shell import XdgPopup
 
 
 class ZwlrLayerSurfaceV1(Interface):

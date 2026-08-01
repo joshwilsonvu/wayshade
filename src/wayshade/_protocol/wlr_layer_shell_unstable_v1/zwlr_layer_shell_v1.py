@@ -36,8 +36,7 @@ from pywayland.protocol_core import (
     Resource,
 )
 
-from ..wayland import WlOutput
-from ..wayland import WlSurface
+from pywayland.protocol.wayland import WlOutput, WlSurface
 from .zwlr_layer_surface_v1 import ZwlrLayerSurfaceV1
 
 
