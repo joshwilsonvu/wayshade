@@ -24,6 +24,10 @@ Key decisions:
 
 A Python library for rendering user-provided GLSL shaders as Wayland desktop wallpapers with WebGL-like API. Users can access ambient system data (CPU load, time, etc.) and pass it to shaders.
 
+The difference between this and other existing projects like Neowall is that instead of a single parent program defining the rendering pipeline and accepting a shader + some config, this project will invert control and allow a user-provided script to define the rendering pipeline (i.e. so you can load images as textures, run multiple passes, etc.) and pass in any information they want as uniforms. As a library, we'll offer a high-level API (a little higher than WebGL) to make it super easy to render images or shaders.
+
+It should also be easy to use--don't want to make people go "oh man, I have to use the Python ecosystem?". `uv` helps with that.
+
 ## Recommended Libraries
 
 **Core dependencies:**
@@ -92,7 +96,7 @@ shader = wallpaper.load_shader("""
 # Load texture from image
 texture = wallpaper.load_texture("background.png")
 
-# Main render loop
+# Main render loop - TODO: use an asyncio event loop if that's better
 while True:
     # Access ambient data
     cpu_load = psutil.cpu_percent() / 100.0
@@ -108,23 +112,6 @@ while True:
 
     # Render frame
     wallpaper.render()
-```
-
-### Simplified API (for common cases)
-
-```python
-from waypaper_wallpaper import Wallpaper
-
-wallpaper = Wallpaper()
-wallpaper.set_shader_file("shader.frag")
-wallpaper.set_texture_file("background.png")
-
-# Automatic uniform updates
-wallpaper.auto_uniform("u_time")      # Updates automatically
-wallpaper.auto_uniform("u_cpu_load")  # Reads from psutil
-wallpaper.auto_uniform("u_resolution") # Reads from output
-
-wallpaper.run()  # Blocking render loop
 ```
 
 ## Implementation Requirements
