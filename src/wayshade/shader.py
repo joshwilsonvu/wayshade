@@ -25,6 +25,7 @@ class Shader:
 
     source: str
     uniforms: dict[str, UniformValue] = field(default_factory=dict)
+    source_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.source.strip():
@@ -61,7 +62,7 @@ class Shader:
         """Load fragment shader source from a UTF-8 file."""
         source_path = Path(path)
         try:
-            return cls(source_path.read_text(encoding="utf-8"))
+            return cls(source_path.read_text(encoding="utf-8"), source_path=source_path)
         except OSError as error:
             raise ShaderError(
                 f"Could not read shader file {source_path}: {error}"

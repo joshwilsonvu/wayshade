@@ -162,38 +162,65 @@ class EglPresenter:
         if image.texture is not None:
             return
         gl = self._gl
-        image.texture = gl.glGenTextures(1)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, image.texture)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
-        gl.glTexImage2D(
-            gl.GL_TEXTURE_2D,
-            0,
-            gl.GL_RGBA,
-            image.width,
-            image.height,
-            0,
-            gl.GL_RGBA,
-            gl.GL_UNSIGNED_BYTE,
-            image.pixels,
-        )
-        image.framebuffer = gl.glGenFramebuffers(1)
-        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, image.framebuffer)
-        gl.glFramebufferTexture2D(
-            gl.GL_FRAMEBUFFER,
-            gl.GL_COLOR_ATTACHMENT0,
-            gl.GL_TEXTURE_2D,
-            image.texture,
-            0,
-        )
-        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) != gl.GL_FRAMEBUFFER_COMPLETE:
-            raise EglPresentationError("Image framebuffer is incomplete")
-        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
-        self.images.append(image)
+        texture = None
+        framebuffer = None
+        try:
+            texture = gl.glGenTextures(1)
+            gl.glBindTexture(gl.GL_TEXTURE_2D, texture)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+            gl.glTexParameteri(
+                gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE
+            )
+            gl.glTexParameteri(
+                gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE
+            )
+            gl.glTexImage2D(
+                gl.GL_TEXTURE_2D,
+                0,
+                gl.GL_RGBA,
+                image.width,
+                image.height,
+                0,
+                gl.GL_RGBA,
+                gl.GL_UNSIGNED_BYTE,
+                image.pixels,
+            )
+            framebuffer = gl.glGenFramebuffers(1)
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, framebuffer)
+            gl.glFramebufferTexture2D(
+                gl.GL_FRAMEBUFFER,
+                gl.GL_COLOR_ATTACHMENT0,
+                gl.GL_TEXTURE_2D,
+                texture,
+                0,
+            )
+            if (
+                gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER)
+                != gl.GL_FRAMEBUFFER_COMPLETE
+            ):
+                raise EglPresentationError("framebuffer is incomplete")
+            image.texture = texture
+            image.framebuffer = framebuffer
+            self.images.append(image)
+        except Exception as error:
+            if framebuffer is not None:
+                gl.glDeleteFramebuffers(1, [framebuffer])
+            if texture is not None:
+                gl.glDeleteTextures(1, [texture])
+            label = _image_label(image)
+            if isinstance(error, EglPresentationError):
+                detail = str(error)
+            else:
+                detail = str(error) or error.__class__.__name__
+            raise EglPresentationError(
+                f"Image texture/framebuffer setup failed for {label}: {detail}"
+            ) from error
+        finally:
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+            gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
 
-    def _program_for(self, source: str) -> int:
+    def _program_for(self, source: str, source_path: Any = None) -> int:
         """Compile and link ``source`` once for this EGL context."""
         if source in self._programs:
             return self._programs[source]
@@ -221,7 +248,17 @@ class EglPresenter:
                     log = gl.glGetShaderInfoLog(shader_object)
                     if isinstance(log, bytes):
                         log = log.decode(errors="replace")
-                    raise EglPresentationError(f"Shader compilation failed: {log}")
+                    kind = (
+                        "fragment" if shader_type == gl.GL_FRAGMENT_SHADER else "vertex"
+                    )
+                    location = (
+                        f" ({source_path})"
+                        if kind == "fragment" and source_path
+                        else ""
+                    )
+                    raise EglPresentationError(
+                        f"{kind.capitalize()} shader compilation failed{location}: {log}"
+                    )
                 shader_objects.append(shader_object)
 
             program = gl.glCreateProgram()
@@ -233,7 +270,8 @@ class EglPresenter:
                 log = gl.glGetProgramInfoLog(program)
                 if isinstance(log, bytes):
                     log = log.decode(errors="replace")
-                raise EglPresentationError(f"Shader link failed: {log}")
+                location = f" ({source_path})" if source_path else ""
+                raise EglPresentationError(f"Shader link failed{location}: {log}")
             self._programs[source] = program
             return program
         except Exception:
@@ -252,8 +290,9 @@ class EglPresenter:
             raise EglPresentationError("EGL presenter is closed")
         gl = self._gl
         vertex_buffer = gl.glGenBuffers(1)
-        program = self._program_for(shader.source)
+        program = 0
         try:
+            program = self._program_for(shader.source, shader.source_path)
             vertices = (ctypes.c_float * 8)(-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0)
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vertex_buffer)
             gl.glBufferData(
@@ -284,7 +323,9 @@ class EglPresenter:
             for name, value in shader.uniforms.items():
                 location = gl.glGetUniformLocation(program, name)
                 if location < 0:
-                    continue
+                    raise EglPresentationError(
+                        f"Shader uniform {name!r} was not found or is not active"
+                    )
                 _set_uniform(gl, location, value)
             gl.glEnableVertexAttribArray(0)
             gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, None)
@@ -455,6 +496,12 @@ class EglPresenter:
         if self.wl_window and self._wayland_egl is not None:
             self._wayland_egl.wl_egl_window_destroy(self.wl_window)
         self.closed = True
+
+
+def _image_label(image: Any) -> str:
+    source = getattr(image, "source", None)
+    path = f"{source} " if source is not None else ""
+    return f"{path}({image.width}x{image.height})"
 
 
 def _set_uniform(gl: Any, location: int, value: Any) -> None:

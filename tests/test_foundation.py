@@ -18,7 +18,7 @@ from wayshade._protocol.wlr_layer_shell_unstable_v1.zwlr_layer_shell_v1 import (
 from wayshade._protocol.wlr_layer_shell_unstable_v1.zwlr_layer_surface_v1 import (
     ZwlrLayerSurfaceV1,
 )
-from wayshade.egl import EglPresenter
+from wayshade.egl import EglPresentationError, EglPresenter
 
 
 def test_program_cache_compiles_each_source_once() -> None:
@@ -173,6 +173,52 @@ def test_shader_uniform_state_is_persistent() -> None:
     shader = Shader("void main() {}")
     assert shader.set("amount", 1.5).set({"resolution": (2.0, 3.0)}) is shader
     assert shader.uniforms == {"amount": 1.5, "resolution": (2.0, 3.0)}
+
+
+def test_shader_file_preserves_source_path(tmp_path: Any) -> None:
+    path = tmp_path / "broken.frag"
+    path.write_text("void main() {}", encoding="utf-8")
+
+    shader = Shader.from_file(path)
+
+    assert shader.source_path == path
+
+
+def test_shader_compile_error_includes_path_and_driver_log(tmp_path: Any) -> None:
+    class FakeGl:
+        GL_VERTEX_SHADER = 1
+        GL_FRAGMENT_SHADER = 2
+        GL_COMPILE_STATUS = 3
+        GL_LINK_STATUS = 4
+
+        def glCreateShader(self, shader_type: int) -> int:
+            return shader_type
+
+        def glShaderSource(self, _shader: int, _source: str) -> None:
+            pass
+
+        def glCompileShader(self, _shader: int) -> None:
+            pass
+
+        def glGetShaderiv(self, shader: int, _parameter: int) -> bool:
+            return shader != self.GL_FRAGMENT_SHADER
+
+        def glGetShaderInfoLog(self, _shader: int) -> bytes:
+            return b"ERROR: 0:7: syntax error"
+
+        def glDeleteShader(self, _shader: int) -> None:
+            pass
+
+        def glDeleteProgram(self, _program: int) -> None:
+            pass
+
+    path = tmp_path / "broken.frag"
+    presenter = EglPresenter.__new__(EglPresenter)
+    presenter._gl = FakeGl()
+    presenter._programs = {}
+
+    with pytest.raises(EglPresentationError, match="broken.frag.*0:7: syntax error"):
+        presenter._program_for("broken", path)
 
 
 def test_wallpaper_waits_for_frame_callback() -> None:
