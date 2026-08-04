@@ -96,14 +96,11 @@ class Renderer:
         shader: Shader | Image,
         *,
         to: Target | WallpaperSurface | Image | None = None,
-        textures: dict[str, Image] | None = None,
     ) -> Image | None:
         """Draw a shader or image, producing an intermediate image by default."""
         if self.closed:
             raise RendererError("Renderer is closed")
         if isinstance(shader, Image):
-            if textures:
-                raise RendererError("Image draws do not accept texture inputs")
             source = shader
             shader = self.load_shader("""
                 #version 120
@@ -111,7 +108,7 @@ class Renderer:
                 varying vec2 uv;
                 void main() { gl_FragColor = texture2D(source, uv); }
             """)
-            textures = {"source": source}
+            shader.set("source", source)
         destination: WallpaperSurface | Image
         if to is None:
             destination = Image.empty(self.wallpaper.width, self.wallpaper.height)
@@ -124,10 +121,12 @@ class Renderer:
             raise RendererError("Invalid renderer target")
         if isinstance(destination, Image) and destination is shader:
             raise RendererError("An image cannot be drawn to itself")
-        if textures and any(
-            not isinstance(image, Image) for image in textures.values()
+        if isinstance(destination, Image) and any(
+            image is destination
+            for image in shader.uniforms.values()
+            if isinstance(image, Image)
         ):
-            raise RendererError("Textures must be Image objects")
+            raise RendererError("An image cannot be drawn to itself")
         if isinstance(destination, Image):
             if destination not in self._images:
                 self._images.append(destination)
@@ -136,7 +135,7 @@ class Renderer:
         else:
             presenter = self._presenter()
         if isinstance(destination, Image):
-            presenter.render_shader(shader, textures or {}, destination, swap=False)
+            presenter.render_shader(shader, destination, swap=False)
             return destination
         if destination.frame_pending:
             raise RendererError(
@@ -144,7 +143,7 @@ class Renderer:
             )
         destination._request_frame()
         try:
-            presenter.render_shader(shader, textures or {}, destination, swap=True)
+            presenter.render_shader(shader, destination, swap=True)
         except Exception:
             if destination.frame_callback is not None:
                 destination.frame_callback.destroy()

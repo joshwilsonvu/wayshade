@@ -171,8 +171,14 @@ def test_image_missing_file_is_actionable() -> None:
 
 def test_shader_uniform_state_is_persistent() -> None:
     shader = Shader("void main() {}")
+    image = Image.empty(2, 2)
     assert shader.set("amount", 1.5).set({"resolution": (2.0, 3.0)}) is shader
-    assert shader.uniforms == {"amount": 1.5, "resolution": (2.0, 3.0)}
+    shader.set("source", image)
+    assert shader.uniforms == {
+        "amount": 1.5,
+        "resolution": (2.0, 3.0),
+        "source": image,
+    }
 
 
 def test_shader_file_preserves_source_path(tmp_path: Any) -> None:

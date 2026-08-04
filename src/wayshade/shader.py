@@ -7,12 +7,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .image import Image
+
 
 class ShaderError(RuntimeError):
     """Raised for invalid shader source or uniform state."""
 
 
-UniformValue = float | int | bool | tuple[float | int, ...] | None
+UniformValue = float | int | bool | tuple[float | int, ...] | Image | None
 
 
 @dataclass
@@ -72,7 +74,7 @@ class Shader:
 def _is_uniform_value(value: Any) -> bool:
     if value is None:
         return True
-    if isinstance(value, (bool, int, float)):
+    if isinstance(value, (bool, int, float, Image)):
         return True
     return (
         isinstance(value, tuple)

@@ -25,6 +25,7 @@ with wayshade.create() as renderer:
         # One full rainbow cycle takes about 30 seconds.
         hue = (frame.time / 30.0) % 1.0
         tint_shader.set("tint", hsv_to_rgb(hue, 1.0, 1.0))
-        renderer.draw(tint_shader, textures={"source": moon}, to=renderer.wallpaper)
-    
+        tint_shader.set("source", moon)
+        renderer.draw(tint_shader, to=renderer.wallpaper)
+
     renderer.run(update=update)

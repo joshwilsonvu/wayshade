@@ -20,5 +20,6 @@ with wayshade.create() as renderer:
         """
     )
     shader.set({"u_exposure": 1.0, "u_tint": (1.0, 0.85, 0.75)})
-    renderer.draw(shader, textures={"u_moon": image}, to=renderer.wallpaper)
+    shader.set("u_moon", image)
+    renderer.draw(shader, to=renderer.wallpaper)
     input("Press Enter to quit")

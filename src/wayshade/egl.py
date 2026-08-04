@@ -6,6 +6,8 @@ import ctypes
 from dataclasses import dataclass
 from typing import Any
 
+from .image import Image
+
 
 class EglUnavailableError(RuntimeError):
     """Raised when EGL or the Wayland-EGL bridge cannot be loaded."""
@@ -282,9 +284,7 @@ class EglPresenter:
             for shader_object in shader_objects:
                 gl.glDeleteShader(shader_object)
 
-    def render_shader(
-        self, shader: Any, textures: dict[str, Any], target: Any, *, swap: bool
-    ) -> None:
+    def render_shader(self, shader: Any, target: Any, *, swap: bool) -> None:
         """Draw a public fragment shader fullscreen."""
         if self.closed:
             raise EglPresentationError("EGL presenter is closed")
@@ -306,21 +306,28 @@ class EglPresenter:
                 width, height = target.width, target.height
             # Materialize source textures before binding the destination FBO:
             # ensure_image() restores the default framebuffer after allocation.
-            for image in textures.values():
+            image_uniforms = [
+                (name, value)
+                for name, value in shader.uniforms.items()
+                if isinstance(value, Image)
+            ]
+            for _name, image in image_uniforms:
                 self.ensure_image(image)
             gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, framebuffer)
             gl.glViewport(0, 0, width, height)
             gl.glUseProgram(program)
-            for unit, (name, image) in enumerate(textures.items()):
+            for unit, (name, image) in enumerate(image_uniforms):
                 gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
                 gl.glBindTexture(gl.GL_TEXTURE_2D, image.texture)
                 location = gl.glGetUniformLocation(program, name)
                 if location < 0:
                     raise EglPresentationError(
-                        f"Shader texture uniform {name!r} was not found or is not active"
+                        f"Shader image uniform {name!r} was not found or is not active"
                     )
                 gl.glUniform1i(location, unit)
             for name, value in shader.uniforms.items():
+                if isinstance(value, Image):
+                    continue
                 location = gl.glGetUniformLocation(program, name)
                 if location < 0:
                     raise EglPresentationError(

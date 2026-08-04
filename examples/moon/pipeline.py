@@ -17,7 +17,8 @@ with wayshade.create() as renderer:
         }
         """
     )
-    intermediate = renderer.draw(brighten, textures={"source": source})
+    brighten.set("source", source)
+    intermediate = renderer.draw(brighten)
 
     vignette = renderer.load_shader(
         """
@@ -33,5 +34,6 @@ with wayshade.create() as renderer:
         }
         """
     )
-    renderer.draw(vignette, textures={"source": intermediate}, to=renderer.wallpaper)
+    vignette.set("source", intermediate)
+    renderer.draw(vignette, to=renderer.wallpaper)
     input("Press Enter to quit")

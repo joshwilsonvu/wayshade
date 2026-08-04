@@ -81,12 +81,8 @@ with wayshade.create(output=0) as renderer:
         """
     )
 
-    shader.set("time", time.monotonic())
-    renderer.draw(
-        shader,
-        textures={"source": image},
-        to=renderer.wallpaper,
-    )
+    shader.set({"time": time.monotonic(), "source": image})
+    renderer.draw(shader, to=renderer.wallpaper)
 ```
 
 Important public objects:
@@ -95,7 +91,7 @@ Important public objects:
 - `Target`: writable destination abstraction; the current public target is the
   wallpaper surface.
 - `WallpaperSurface`: low-level configured layer-shell surface.
-- `Shader`: fragment GLSL source plus persistent scalar/vector uniform state.
+- `Shader`: fragment GLSL source plus persistent scalar/vector and image uniform state.
 - `Image`: RGBA8 image loaded from disk or allocated as an intermediate buffer.
 - `Frame`: timing and output data passed to `Renderer.run()`.
 
@@ -105,13 +101,15 @@ Important public objects:
 
 ```python
 # Shader to wallpaper.
-renderer.draw(shader, textures={"source": image}, to=renderer.wallpaper)
+shader.set("source", image)
+renderer.draw(shader, to=renderer.wallpaper)
 
 # Shader to a new intermediate image.
-intermediate = renderer.draw(shader, textures={"source": image})
+intermediate = renderer.draw(shader)
 
 # Sample that intermediate in a later pass.
-renderer.draw(other_shader, textures={"input": intermediate}, to=renderer.wallpaper)
+other_shader.set("input", intermediate)
+renderer.draw(other_shader, to=renderer.wallpaper)
 
 # Direct image presentation.
 renderer.draw(image, to=renderer.wallpaper)
@@ -128,18 +126,23 @@ destinations. The current image behavior is:
 - image textures and framebuffers are allocated lazily on first GPU use;
 - source and destination sizes may differ, with fullscreen texture coordinates
   providing the rescaling behavior.
+- each image-valued uniform consumes one fragment texture unit; the practical
+  maximum is reported by the OpenGL driver and is typically at least 16.
 
 ### Uniforms
 
 Uniform state persists on a `Shader` until changed. Wayshade does not inject
 standard or default uniforms: the application chooses names that match its GLSL
-source and passes values explicitly.
+source and passes values explicitly. Scalar and vector values are uploaded as
+ordinary GLSL uniforms; an `Image` value is bound as a `sampler2D` texture.
+`Shader.set()` is the only uniform/binding API.
 
 ```python
 shader.set("amount", 1.25)
 shader.set({
     "resolution": (renderer.wallpaper.width, renderer.wallpaper.height),
     "tint": (1.0, 0.5, 0.25),
+    "source": image,
 })
 ```
 
@@ -195,13 +198,10 @@ python texture.py     # image -> intermediate -> wallpaper
 python uniform.py     # inline shader, sampler, scalar/vector uniforms
 python pipeline.py    # two shader passes through an intermediate image
 python run.py         # compositor-paced rainbow tint animation
-python run_2.py       # frame values copied explicitly into shader uniforms
 ```
 
 `run.py` loads the moon image, updates a rainbow tint from `Frame.time`, and exits
-cleanly on Ctrl-C. `run_2.py` demonstrates copying frame values into shader
-uniforms without renderer-managed defaults. The static examples wait for Enter
-before exiting.
+cleanly on Ctrl-C. The static examples wait for Enter before exiting.
 
 A later usability task will add minimal PEP 723 metadata so representative
 examples can also be run with `uv run --script`. PEP 723 covers Python
