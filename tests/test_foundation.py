@@ -16,6 +16,67 @@ from wayshade._protocol.wlr_layer_shell_unstable_v1.zwlr_layer_shell_v1 import (
 from wayshade._protocol.wlr_layer_shell_unstable_v1.zwlr_layer_surface_v1 import (
     ZwlrLayerSurfaceV1,
 )
+from wayshade.egl import EglPresenter
+
+
+def test_program_cache_compiles_each_source_once() -> None:
+    class FakeGl:
+        GL_VERTEX_SHADER = 1
+        GL_FRAGMENT_SHADER = 2
+        GL_COMPILE_STATUS = 3
+        GL_LINK_STATUS = 4
+
+        def __init__(self) -> None:
+            self.created_shaders = 0
+            self.created_programs = 0
+            self.deleted_shaders = 0
+
+        def glCreateShader(self, _shader_type: int) -> int:
+            self.created_shaders += 1
+            return self.created_shaders
+
+        def glShaderSource(self, _shader: int, _source: str) -> None:
+            pass
+
+        def glCompileShader(self, _shader: int) -> None:
+            pass
+
+        def glGetShaderiv(self, _shader: int, _parameter: int) -> bool:
+            return True
+
+        def glCreateProgram(self) -> int:
+            self.created_programs += 1
+            return self.created_programs
+
+        def glAttachShader(self, _program: int, _shader: int) -> None:
+            pass
+
+        def glBindAttribLocation(self, _program: int, _index: int, _name: str) -> None:
+            pass
+
+        def glLinkProgram(self, _program: int) -> None:
+            pass
+
+        def glGetProgramiv(self, _program: int, _parameter: int) -> bool:
+            return True
+
+        def glDeleteShader(self, _shader: int) -> None:
+            self.deleted_shaders += 1
+
+        def glDeleteProgram(self, _program: int) -> None:
+            pass
+
+    presenter = EglPresenter.__new__(EglPresenter)
+    presenter._gl = FakeGl()
+    presenter._programs = {}
+
+    first = presenter._program_for("void main() {}")
+    second = presenter._program_for("void main() {}")
+
+    assert first == second
+    assert presenter._gl.created_programs == 1
+    assert presenter._gl.created_shaders == 2
+    assert presenter._gl.deleted_shaders == 2
 
 
 def test_layer_shell_bindings_are_packaged() -> None:

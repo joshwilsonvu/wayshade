@@ -188,8 +188,7 @@ Phase 2 now also provides:
 5. Intermediate image sampling in later shader passes.
 
 `offscreen_test()` and `present_solid()` remain low-level feasibility helpers.
-Shader program caching, richer sampler configuration, and the convenience loop
-remain follow-up work.
+Richer sampler configuration and the convenience loop remain follow-up work.
 
 ### Decisions already made
 
@@ -207,7 +206,6 @@ remain follow-up work.
 
 ### Known limitations
 
-- No shader program caching; programs are compiled per draw currently.
 - No convenience `run()` frame loop yet.
 - No output name selection, hotplug, or layout migration.
 - No multi-monitor support.

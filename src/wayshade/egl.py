@@ -49,9 +49,11 @@ class EglPresenter:
     _wayland_egl: Any = None
     closed: bool = False
     images: list[Any] = None  # type: ignore[assignment]
+    _programs: dict[str, int] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         self.images = []
+        self._programs = {}
         self._create()
 
     def _create(self) -> None:
@@ -191,32 +193,29 @@ class EglPresenter:
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
         self.images.append(image)
 
-    def render_shader(
-        self, shader: Any, textures: dict[str, Any], target: Any, *, swap: bool
-    ) -> None:
-        """Compile and draw a public fragment shader fullscreen."""
-        if self.closed:
-            raise EglPresentationError("EGL presenter is closed")
+    def _program_for(self, source: str) -> int:
+        """Compile and link ``source`` once for this EGL context."""
+        if source in self._programs:
+            return self._programs[source]
         gl = self._gl
-        vertex_buffer = gl.glGenBuffers(1)
-        program = 0
+        vertex_source = """
+            #version 120
+            attribute vec2 position;
+            varying vec2 uv;
+            void main() {
+                uv = position * 0.5 + 0.5;
+                gl_Position = vec4(position, 0.0, 1.0);
+            }
+        """
         shader_objects: list[int] = []
+        program = 0
         try:
-            vertex_source = """
-                #version 120
-                attribute vec2 position;
-                varying vec2 uv;
-                void main() {
-                    uv = position * 0.5 + 0.5;
-                    gl_Position = vec4(position, 0.0, 1.0);
-                }
-            """
-            for shader_type, source in (
+            for shader_type, shader_source in (
                 (gl.GL_VERTEX_SHADER, vertex_source),
-                (gl.GL_FRAGMENT_SHADER, shader.source),
+                (gl.GL_FRAGMENT_SHADER, source),
             ):
                 shader_object = gl.glCreateShader(shader_type)
-                gl.glShaderSource(shader_object, source)
+                gl.glShaderSource(shader_object, shader_source)
                 gl.glCompileShader(shader_object)
                 if not gl.glGetShaderiv(shader_object, gl.GL_COMPILE_STATUS):
                     log = gl.glGetShaderInfoLog(shader_object)
@@ -235,7 +234,26 @@ class EglPresenter:
                 if isinstance(log, bytes):
                     log = log.decode(errors="replace")
                 raise EglPresentationError(f"Shader link failed: {log}")
+            self._programs[source] = program
+            return program
+        except Exception:
+            if program:
+                gl.glDeleteProgram(program)
+            raise
+        finally:
+            for shader_object in shader_objects:
+                gl.glDeleteShader(shader_object)
 
+    def render_shader(
+        self, shader: Any, textures: dict[str, Any], target: Any, *, swap: bool
+    ) -> None:
+        """Draw a public fragment shader fullscreen."""
+        if self.closed:
+            raise EglPresentationError("EGL presenter is closed")
+        gl = self._gl
+        vertex_buffer = gl.glGenBuffers(1)
+        program = self._program_for(shader.source)
+        try:
             vertices = (ctypes.c_float * 8)(-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0)
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vertex_buffer)
             gl.glBufferData(
@@ -285,10 +303,6 @@ class EglPresenter:
         finally:
             gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
             gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
-            if program:
-                gl.glDeleteProgram(program)
-            for shader_object in shader_objects:
-                gl.glDeleteShader(shader_object)
             gl.glDeleteBuffers(1, [vertex_buffer])
 
     def offscreen_test_and_swap(self) -> None:
@@ -411,6 +425,19 @@ class EglPresenter:
 
         if self.closed:
             return
+        if self._gl is not None:
+            # Programs and images must be deleted while the EGL context is
+            # current; terminating EGL first makes those deletes invalid.
+            for program in self._programs.values():
+                self._gl.glDeleteProgram(program)
+            self._programs.clear()
+            for image in self.images or []:
+                if image.framebuffer is not None:
+                    self._gl.glDeleteFramebuffers(1, [image.framebuffer])
+                if image.texture is not None:
+                    self._gl.glDeleteTextures(1, [image.texture])
+                image.framebuffer = None
+                image.texture = None
         if self._egl is not None and self.egl_display not in (
             None,
             self._egl.EGL_NO_DISPLAY,
@@ -427,14 +454,6 @@ class EglPresenter:
             if self.egl_context not in (None, self._egl.EGL_NO_CONTEXT):
                 self._egl.eglDestroyContext(self.egl_display, self.egl_context)
             self._egl.eglTerminate(self.egl_display)
-        if self._gl is not None:
-            for image in self.images or []:
-                if image.framebuffer is not None:
-                    self._gl.glDeleteFramebuffers(1, [image.framebuffer])
-                if image.texture is not None:
-                    self._gl.glDeleteTextures(1, [image.texture])
-                image.framebuffer = None
-                image.texture = None
         if self.wl_window and self._wayland_egl is not None:
             self._wayland_egl.wl_egl_window_destroy(self.wl_window)
         self.closed = True
