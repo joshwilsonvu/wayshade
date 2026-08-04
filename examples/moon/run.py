@@ -1,5 +1,12 @@
 """Animate a rainbow tint over an image with Renderer.run()."""
 
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "wayshade @ git+https://github.com/joshwilsonvu/wayshade",
+# ]
+# ///
+
 from colorsys import hsv_to_rgb
 
 import wayshade

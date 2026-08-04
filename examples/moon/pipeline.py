@@ -1,5 +1,12 @@
 """Exercise two shader passes with an intermediate Image target."""
 
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "wayshade @ git+https://github.com/joshwilsonvu/wayshade",
+# ]
+# ///
+
 import wayshade
 
 with wayshade.create() as renderer:

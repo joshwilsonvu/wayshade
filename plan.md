@@ -387,14 +387,13 @@ Do not build the public API around a backend that cannot complete this phase cle
   renderer-managed default uniforms. `Frame.uniforms()` is only a convenience
   dictionary for copying frame values into `Shader.set()`.
 - Improve shader and texture error messages.
-- Provide minimal PEP 723 examples.
-- Add a static image, procedural shader, and textured shader example.
+- Provide minimal PEP 723 examples. (Complete.)
+- Add a static image, procedural shader, and textured shader example. (Complete.)
 
 ### Phase 4: Compatibility and multi-output research
 
 Only after the single-output path is stable:
 
-- test sway and Hyprland;
 - enumerate outputs and expose stable output metadata;
 - give each output a `Target`;
 - define per-output rendering semantics;

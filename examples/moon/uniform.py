@@ -1,5 +1,12 @@
 """Exercise inline shader loading and scalar/vector uniform updates."""
 
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "wayshade @ git+https://github.com/joshwilsonvu/wayshade",
+# ]
+# ///
+
 import wayshade
 
 with wayshade.create() as renderer:

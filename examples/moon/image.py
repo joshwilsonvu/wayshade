@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "wayshade @ git+https://github.com/joshwilsonvu/wayshade",
+# ]
+# ///
+
 import wayshade
 
 renderer = wayshade.create()

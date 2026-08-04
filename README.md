@@ -189,24 +189,25 @@ PyWayland is blocked in native dispatch.
 
 ## Examples
 
-The examples in `examples/moon/` require a live compositor session. From that
-directory:
+The examples in `examples/moon/` require a live compositor session and the
+adjacent `moon.jpg` file. From that directory, each script manages its Python
+dependencies with PEP 723:
 
 ```sh
-python image.py       # direct image presentation
-python texture.py     # image -> intermediate -> wallpaper
-python uniform.py     # inline shader, sampler, scalar/vector uniforms
-python pipeline.py    # two shader passes through an intermediate image
-python run.py         # compositor-paced rainbow tint animation
+uv run --script image.py       # direct image presentation
+uv run --script texture.py     # image -> intermediate -> wallpaper
+uv run --script uniform.py     # inline shader, sampler, scalar/vector uniforms
+uv run --script pipeline.py    # two shader passes through an intermediate image
+uv run --script run.py         # compositor-paced rainbow tint animation
 ```
 
 `run.py` loads the moon image, updates a rainbow tint from `Frame.time`, and exits
 cleanly on Ctrl-C. The static examples wait for Enter before exiting.
 
-A later usability task will add minimal PEP 723 metadata so representative
-examples can also be run with `uv run --script`. PEP 723 covers Python
-dependencies only; the Wayland compositor, EGL libraries, and OpenGL driver
-remain system prerequisites.
+PEP 723 covers Python dependencies only; the Wayland compositor, EGL libraries,
+and OpenGL driver remain system prerequisites. The metadata currently points to
+the project's GitHub repository, so these commands will work once that
+repository is available.
 
 ## Architecture and constraints
 
@@ -255,24 +256,7 @@ Make failures actionable for users:
 
 Avoid hiding driver logs or replacing useful backend errors with generic messages.
 
-### 2. Add minimal PEP 723 examples
-
-Add metadata to a small representative set of standalone scripts:
-
-- a static image example;
-- a procedural shader example;
-- a textured animated example using `Renderer.run()`.
-
-Determine the correct dependency declaration for the package's pre-release state
-before editing the examples: if `wayshade` is not installable from an index, the
-metadata must use the supported local-development workflow rather than claiming
-that a clean external machine can install the unpublished package. Keep native
-Wayland/EGL/OpenGL requirements documented separately.
-
-Update the README commands and example comments after the metadata is validated
-with `uv run --script`.
-
-### 3. Strengthen GPU-path tests
+### 2. Strengthen GPU-path tests
 
 Keep ordinary tests deterministic and compositor-independent, then add an
 explicitly opt-in live validation path.
@@ -292,7 +276,7 @@ part of the normal CI suite. On Niri it should verify EGL creation, wallpaper
 presentation, image sampling, intermediate-image sampling, repeated cached draws,
 frame pacing, Ctrl-C exit, and clean resource release.
 
-### 4. Then investigate later compatibility work
+### 3. Then investigate later compatibility work
 
 Only after the single-output path and Phase 3 usability work are stable:
 
