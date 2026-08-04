@@ -3,6 +3,7 @@ from typing import Any, cast
 import pytest
 
 from wayshade import (
+    Frame,
     Image,
     ImageError,
     Renderer,
@@ -78,6 +79,19 @@ def test_program_cache_compiles_each_source_once() -> None:
     assert presenter._gl.created_programs == 1
     assert presenter._gl.created_shaders == 2
     assert presenter._gl.deleted_shaders == 2
+
+
+def test_frame_uniforms_are_explicit_and_omit_unavailable_output() -> None:
+    frame = Frame(time=1.5, delta_time=0.25, width=1920, height=1080)
+    assert frame.uniforms() == {
+        "time": 1.5,
+        "delta_time": 0.25,
+        "width": 1920,
+        "height": 1080,
+    }
+    output_frame = Frame(time=1.5, delta_time=0.25, width=1920, height=1080, output=2)
+    assert output_frame.uniforms()["output"] == 2
+    assert output_frame.uniforms() is not output_frame.uniforms()
 
 
 def test_renderer_run_is_frame_callback_paced() -> None:

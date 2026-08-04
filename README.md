@@ -81,7 +81,7 @@ with wayshade.create(output=0) as renderer:
         """
     )
 
-    shader.set("u_time", time.monotonic())
+    shader.set("time", time.monotonic())
     renderer.draw(
         shader,
         textures={"source": image},
@@ -131,7 +131,9 @@ destinations. The current image behavior is:
 
 ### Uniforms
 
-Uniform state persists on a `Shader` until changed:
+Uniform state persists on a `Shader` until changed. Wayshade does not inject
+standard or default uniforms: the application chooses names that match its GLSL
+source and passes values explicitly.
 
 ```python
 shader.set("amount", 1.25)
@@ -152,15 +154,22 @@ vertex shader and quad. The current GLSL contract uses the compatibility-style
 
 ### Compositor-paced animation
 
-`Renderer.run()` calls an update function once per compositor-paced frame:
+`Renderer.run()` calls an update function once per compositor-paced frame. The
+application can copy the frame values into its shader uniforms explicitly:
 
 ```python
 def update(frame: wayshade.Frame) -> None:
-    shader.set("u_time", frame.time)
+    shader.set(frame.uniforms())
     renderer.draw(shader, to=renderer.wallpaper)
 
 renderer.run(update=update)
 ```
+
+`Frame.uniforms()` returns a fresh plain dictionary containing `time`,
+`delta_time`, `width`, and `height`, plus `output` when a numeric output was
+selected. It is a convenience for explicit uniform updates, not an implicit
+shader contract; applications may rename or select values before calling
+`Shader.set()`.
 
 `Frame` contains:
 
@@ -186,10 +195,13 @@ python texture.py     # image -> intermediate -> wallpaper
 python uniform.py     # inline shader, sampler, scalar/vector uniforms
 python pipeline.py    # two shader passes through an intermediate image
 python run.py         # compositor-paced rainbow tint animation
+python run_2.py       # frame values copied explicitly into shader uniforms
 ```
 
 `run.py` loads the moon image, updates a rainbow tint from `Frame.time`, and exits
-cleanly on Ctrl-C. The static examples wait for Enter before exiting.
+cleanly on Ctrl-C. `run_2.py` demonstrates copying frame values into shader
+uniforms without renderer-managed defaults. The static examples wait for Enter
+before exiting.
 
 A later usability task will add minimal PEP 723 metadata so representative
 examples can also be run with `uv run --script`. PEP 723 covers Python
@@ -222,23 +234,14 @@ The graphics feasibility spike and the single-output rendering/image pipeline ar
 complete. Shader program caching, explicit `Frame` timing, the compositor-paced
 `run()` helper, and runnable image/shader examples are also implemented.
 
+The initial Phase 3 loop and usability work is complete. The project explicitly
+leaves uniform naming and selection to the application; there is no renderer
+managed default-uniform contract. `Frame.uniforms()` provides an optional plain
+dictionary convenience for copying loop values into a shader.
+
 The next work should continue Phase 3 in this order:
 
-### 1. Add explicit default-uniform helpers
-
-Implement an opt-in API such as:
-
-```python
-shader.default_uniforms(time=True, resolution=True, delta_time=True)
-```
-
-This must remain explicit: the base renderer must not silently inject uniform
-names into user shaders. Decide how enabled defaults are represented, how values
-are updated for both manual `draw()` calls and `run()`, and how absent uniforms
-are reported. Add unit tests for opt-in behavior and for the default-disabled
-case.
-
-### 2. Improve shader and texture diagnostics
+### 1. Improve shader and texture diagnostics
 
 Make failures actionable for users:
 
@@ -252,7 +255,7 @@ Make failures actionable for users:
 
 Avoid hiding driver logs or replacing useful backend errors with generic messages.
 
-### 3. Add minimal PEP 723 examples
+### 2. Add minimal PEP 723 examples
 
 Add metadata to a small representative set of standalone scripts:
 
@@ -269,7 +272,7 @@ Wayland/EGL/OpenGL requirements documented separately.
 Update the README commands and example comments after the metadata is validated
 with `uv run --script`.
 
-### 4. Strengthen GPU-path tests
+### 3. Strengthen GPU-path tests
 
 Keep ordinary tests deterministic and compositor-independent, then add an
 explicitly opt-in live validation path.
@@ -289,7 +292,7 @@ part of the normal CI suite. On Niri it should verify EGL creation, wallpaper
 presentation, image sampling, intermediate-image sampling, repeated cached draws,
 frame pacing, Ctrl-C exit, and clean resource release.
 
-### 5. Then investigate later compatibility work
+### 4. Then investigate later compatibility work
 
 Only after the single-output path and Phase 3 usability work are stable:
 

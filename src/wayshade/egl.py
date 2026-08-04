@@ -284,9 +284,7 @@ class EglPresenter:
             for name, value in shader.uniforms.items():
                 location = gl.glGetUniformLocation(program, name)
                 if location < 0:
-                    raise EglPresentationError(
-                        f"Shader uniform {name!r} was not found or is not active"
-                    )
+                    continue
                 _set_uniform(gl, location, value)
             gl.glEnableVertexAttribArray(0)
             gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, None)

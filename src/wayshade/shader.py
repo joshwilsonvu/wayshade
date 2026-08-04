@@ -12,7 +12,7 @@ class ShaderError(RuntimeError):
     """Raised for invalid shader source or uniform state."""
 
 
-UniformValue = float | int | bool | tuple[float | int, ...]
+UniformValue = float | int | bool | tuple[float | int, ...] | None
 
 
 @dataclass
@@ -53,6 +53,9 @@ class Shader:
             self.uniforms[uniform_name] = uniform_value
         return self
 
+    # alias
+    uniform = set
+
     @classmethod
     def from_file(cls, path: str | Path) -> Shader:
         """Load fragment shader source from a UTF-8 file."""
@@ -66,6 +69,8 @@ class Shader:
 
 
 def _is_uniform_value(value: Any) -> bool:
+    if value is None:
+        return True
     if isinstance(value, (bool, int, float)):
         return True
     return (

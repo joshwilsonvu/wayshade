@@ -31,6 +31,22 @@ class Frame:
     height: int
     output: int | None = None
 
+    def uniforms(self) -> dict[str, float | int]:
+        """Return frame values in the form accepted by ``Shader.set``.
+
+        ``output`` is omitted when no numeric output was selected, since GLSL
+        uniforms cannot represent ``None``.
+        """
+        values: dict[str, float | int] = {
+            "time": self.time,
+            "delta_time": self.delta_time,
+            "width": self.width,
+            "height": self.height,
+        }
+        if self.output is not None:
+            values["output"] = self.output
+        return values
+
 
 @dataclass(frozen=True)
 class Target:

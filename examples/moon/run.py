@@ -26,5 +26,5 @@ with wayshade.create() as renderer:
         hue = (frame.time / 30.0) % 1.0
         tint_shader.set("tint", hsv_to_rgb(hue, 1.0, 1.0))
         renderer.draw(tint_shader, textures={"source": moon}, to=renderer.wallpaper)
-
+    
     renderer.run(update=update)

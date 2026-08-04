@@ -234,13 +234,10 @@ The first implementation should define a clear frame object containing at least:
 - output dimensions;
 - output identity/index where available.
 
-Automatic uniforms are not implicit. A later explicit helper may be provided, such as:
-
-```python
-shader.default_uniforms(time=True, resolution=True, delta_time=True)
-```
-
-but the base API must not silently inject names or values into user shaders.
+`run()` does not automatically set any uniforms. The application owns the mapping between
+frame values and shader uniform names. `Frame.uniforms()` may provide a plain
+copyable dictionary of frame values as a convenience, but the renderer must not
+inject names or values into user shaders.
 
 ## 7. Wayland integration
 
@@ -386,7 +383,9 @@ Do not build the public API around a backend that cannot complete this phase cle
 
 - Add `renderer.run(update=...)`.
 - Define the frame object and timing behavior.
-- Add optional explicit default-uniform helpers.
+- Keep uniform naming and updates explicit in application code; do not add
+  renderer-managed default uniforms. `Frame.uniforms()` is only a convenience
+  dictionary for copying frame values into `Shader.set()`.
 - Improve shader and texture error messages.
 - Provide minimal PEP 723 examples.
 - Add a static image, procedural shader, and textured shader example.
