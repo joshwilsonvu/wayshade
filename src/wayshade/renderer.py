@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import atexit
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import Any, Self
 
 from .image import Image
 from .shader import Shader
@@ -38,6 +40,8 @@ class Renderer:
         self.target = Target(wallpaper)
         self._images: list[Image] = []
         self.closed = False
+        self._exit_cleanup = self.close
+        atexit.register(self._exit_cleanup)
 
     def load_shader(self, source: str) -> Shader:
         """Create a fragment shader from GLSL source."""
@@ -126,12 +130,24 @@ class Renderer:
             )
         return self.wallpaper.presenter
 
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        _type: type[BaseException] | None,
+        _value: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
     def wait_for_frame(self) -> None:
         if self.closed:
             raise RendererError("Renderer is closed")
         self.wallpaper.wait_for_frame()
 
     def close(self) -> None:
+        atexit.unregister(self._exit_cleanup)
         if not self.closed:
             self.wallpaper.close()
             self._images.clear()

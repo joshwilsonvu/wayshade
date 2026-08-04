@@ -247,11 +247,14 @@ class EglPresenter:
                 self.ensure_image(target)
                 framebuffer = target.framebuffer
                 width, height = target.width, target.height
+            # Materialize source textures before binding the destination FBO:
+            # ensure_image() restores the default framebuffer after allocation.
+            for image in textures.values():
+                self.ensure_image(image)
             gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, framebuffer)
             gl.glViewport(0, 0, width, height)
             gl.glUseProgram(program)
             for unit, (name, image) in enumerate(textures.items()):
-                self.ensure_image(image)
                 gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
                 gl.glBindTexture(gl.GL_TEXTURE_2D, image.texture)
                 location = gl.glGetUniformLocation(program, name)
@@ -271,6 +274,10 @@ class EglPresenter:
             gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, None)
             gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
             gl.glDisableVertexAttribArray(0)
+            if not swap:
+                # The next pass may sample this texture immediately. Flush the
+                # offscreen draw before changing targets and binding it as input.
+                gl.glFlush()
             if swap and not self._egl.eglSwapBuffers(
                 self.egl_display, self.egl_surface
             ):
