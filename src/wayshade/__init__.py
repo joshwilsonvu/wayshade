@@ -2,7 +2,7 @@
 
 from .egl import EglPresentationError, EglUnavailableError
 from .image import Image, ImageError
-from .renderer import Renderer, RendererError, Target, create
+from .renderer import Frame, Renderer, RendererError, Target, create
 from .shader import Shader, ShaderError
 from .wallpaper import WallpaperSurface, WallpaperSurfaceError, create_wallpaper
 from .wayland import WaylandUnavailableError, connect
@@ -15,6 +15,7 @@ from .wayland_session import (
 __all__ = [
     "EglPresentationError",
     "EglUnavailableError",
+    "Frame",
     "Image",
     "ImageError",
     "MissingWaylandGlobalError",

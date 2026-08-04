@@ -5,6 +5,7 @@ import pytest
 from wayshade import (
     Image,
     ImageError,
+    Renderer,
     Shader,
     WallpaperSurface,
     WallpaperSurfaceError,
@@ -77,6 +78,57 @@ def test_program_cache_compiles_each_source_once() -> None:
     assert presenter._gl.created_programs == 1
     assert presenter._gl.created_shaders == 2
     assert presenter._gl.deleted_shaders == 2
+
+
+def test_renderer_run_is_frame_callback_paced() -> None:
+    class Wallpaper:
+        width = 1920
+        height = 1080
+        frame_pending = False
+
+        def wait_for_frame(self) -> None:
+            self.frame_pending = False
+
+        def close(self) -> None:
+            pass
+
+    wallpaper = Wallpaper()
+    renderer = Renderer(wallpaper, output=2)  # type: ignore[arg-type]
+    frames = []
+
+    def update(frame: object) -> bool:
+        frames.append(frame)
+        if len(frames) == 1:
+            wallpaper.frame_pending = True
+            return True
+        return False
+
+    renderer.run(update)
+    renderer.close()
+
+    assert len(frames) == 2
+    assert frames[0].width == 1920
+    assert frames[0].height == 1080
+    assert frames[0].output == 2
+    assert frames[1].delta_time >= 0
+
+
+def test_renderer_run_handles_keyboard_interrupt() -> None:
+    class Wallpaper:
+        width = 1
+        height = 1
+        frame_pending = False
+
+        def close(self) -> None:
+            pass
+
+    renderer = Renderer(Wallpaper())  # type: ignore[arg-type]
+
+    def update(_frame: object) -> None:
+        raise KeyboardInterrupt
+
+    renderer.run(update)
+    renderer.close()
 
 
 def test_layer_shell_bindings_are_packaged() -> None:

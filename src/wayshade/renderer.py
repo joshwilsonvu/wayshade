@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import atexit
+import signal
+import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -15,6 +19,17 @@ from .wallpaper import WallpaperSurface, create_wallpaper
 
 class RendererError(RuntimeError):
     """Raised when a renderer operation cannot be completed."""
+
+
+@dataclass(frozen=True)
+class Frame:
+    """Timing and output information for one convenience-loop update."""
+
+    time: float
+    delta_time: float
+    width: int
+    height: int
+    output: int | None = None
 
 
 @dataclass(frozen=True)
@@ -35,8 +50,11 @@ class Target:
 class Renderer:
     """Own one Wayland wallpaper target and its graphics session."""
 
-    def __init__(self, wallpaper: WallpaperSurface) -> None:
+    def __init__(
+        self, wallpaper: WallpaperSurface, *, output: int | None = None
+    ) -> None:
         self.wallpaper = wallpaper
+        self.output = output
         self.target = Target(wallpaper)
         self._images: list[Image] = []
         self.closed = False
@@ -146,6 +164,61 @@ class Renderer:
             raise RendererError("Renderer is closed")
         self.wallpaper.wait_for_frame()
 
+    def run(self, update: Callable[[Frame], object]) -> None:
+        """Call ``update`` once per compositor-paced frame.
+
+        The callback owns rendering and may return ``False`` to stop the loop.
+        Any other return value continues it. The first update runs immediately;
+        later updates wait for the previous draw's Wayland frame callback.
+        """
+        if self.closed:
+            raise RendererError("Renderer is closed")
+        if not callable(update):
+            raise TypeError("update must be callable")
+        started = time.monotonic()
+        previous = started
+        interrupted = False
+        previous_handler = None
+
+        def on_interrupt(_signum: int, _frame: object) -> None:
+            nonlocal interrupted
+            interrupted = True
+
+        # Raising KeyboardInterrupt from inside PyWayland's CFFI dispatcher
+        # callback is ignored by cffi. Record SIGINT instead and let the native
+        # dispatch return so the loop can cleanly unwind.
+        if threading.current_thread() is threading.main_thread():
+            previous_handler = signal.signal(signal.SIGINT, on_interrupt)
+        try:
+            while True:
+                if interrupted:
+                    return
+                now = time.monotonic()
+                frame = Frame(
+                    time=now - started,
+                    delta_time=now - previous,
+                    width=self.wallpaper.width,
+                    height=self.wallpaper.height,
+                    output=self.output,
+                )
+                previous = now
+                if update(frame) is False or interrupted:
+                    return
+                if self.closed:
+                    return
+                if self.wallpaper.frame_pending:
+                    try:
+                        self.wait_for_frame()
+                    except RuntimeError:
+                        if interrupted:
+                            return
+                        raise
+        except KeyboardInterrupt:
+            return
+        finally:
+            if previous_handler is not None:
+                signal.signal(signal.SIGINT, previous_handler)
+
     def close(self) -> None:
         atexit.unregister(self._exit_cleanup)
         if not self.closed:
@@ -156,7 +229,9 @@ class Renderer:
 
 def create(*, output: int | None = None, display_name: str | None = None) -> Renderer:
     """Create a renderer for the first output or numeric ``output`` index."""
-    return Renderer(create_wallpaper(display_name=display_name, output=output))
+    return Renderer(
+        create_wallpaper(display_name=display_name, output=output), output=output
+    )
 
 
-__all__ = ["Renderer", "RendererError", "Target", "create"]
+__all__ = ["Frame", "Renderer", "RendererError", "Target", "create"]

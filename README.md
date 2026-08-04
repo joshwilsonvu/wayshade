@@ -150,10 +150,12 @@ python image.py       # direct image presentation
 python texture.py     # image -> intermediate -> wallpaper
 python uniform.py     # inline shader, sampler, scalar/vector uniforms
 python pipeline.py    # two shader passes through an intermediate image
+python run.py         # compositor-paced rainbow tint animation
 ```
 
-Each example waits for Enter before exiting and uses the renderer context
-manager for cleanup.
+The static examples wait for Enter before exiting and use the renderer context
+manager for cleanup. The animated `run.py` example runs until interrupted with
+`Ctrl-C`.
 
 A compositor session with `wlr-layer-shell-unstable-v1` support is required.
 Niri is the primary target; Sway and Hyprland are later compatibility targets.
@@ -177,6 +179,8 @@ The first Phase 1 slice now provides:
 4. Fullscreen rendering with persistent scalar/vector uniform state.
 5. Compositor-paced presentation through `Renderer.draw()` and
    `Renderer.wait_for_frame()`.
+6. A `Renderer.run(update=...)` convenience loop with elapsed time, delta time,
+   output dimensions, and output index in each `Frame`.
 
 Phase 2 now also provides:
 
@@ -188,7 +192,9 @@ Phase 2 now also provides:
 5. Intermediate image sampling in later shader passes.
 
 `offscreen_test()` and `present_solid()` remain low-level feasibility helpers.
-Richer sampler configuration and the convenience loop remain follow-up work.
+Richer sampler configuration remains follow-up work. `Renderer.run()` provides a
+compositor-paced callback loop for animated wallpapers; return `False` from the
+callback to stop it.
 
 ### Decisions already made
 
