@@ -20,6 +20,11 @@ class WaylandGlobals:
     compositor: Any
     layer_shell: Any
     output: Any | None
+    outputs: list[Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.outputs is None:
+            self.outputs = [] if self.output is None else [self.output]
 
     def close(self) -> None:
         """Release protocol objects and close the compositor connection."""
@@ -27,11 +32,13 @@ class WaylandGlobals:
         self.display.disconnect()
 
 
-def discover_globals(display_name: str | None = None) -> WaylandGlobals:
+def discover_globals(
+    display_name: str | None = None, output: int | None = None
+) -> WaylandGlobals:
     """Connect to Wayland and bind the globals required by Wayshade.
 
-    The first output is intentionally used as the default. Output selection by
-    index will be added when the surface/session object is implemented.
+    ``output`` selects a numeric output index. With no index, the first output
+    advertised by the compositor is used.
     """
 
     try:
@@ -48,10 +55,10 @@ def discover_globals(display_name: str | None = None) -> WaylandGlobals:
 
     display: Any = connect(display_name)
     registry = display.get_registry()
-    globals_by_name: dict[str, tuple[int, Any]] = {}
+    globals_by_name: dict[str, list[tuple[int, int]]] = {}
 
     def on_global(_registry: Any, name: int, interface: str, version: int) -> None:
-        globals_by_name[interface] = (name, version)
+        globals_by_name.setdefault(interface, []).append((name, version))
 
     registry.dispatcher["global"] = on_global
     try:
@@ -65,19 +72,26 @@ def discover_globals(display_name: str | None = None) -> WaylandGlobals:
                 f"The compositor does not advertise required Wayland globals: {names}"
             )
 
-        compositor_name, compositor_version = globals_by_name["wl_compositor"]
-        layer_name, layer_version = globals_by_name["zwlr_layer_shell_v1"]
+        compositor_name, compositor_version = globals_by_name["wl_compositor"][0]
+        layer_name, layer_version = globals_by_name["zwlr_layer_shell_v1"][0]
         compositor = registry.bind(
             compositor_name, WlCompositor, min(compositor_version, 1)
         )
         layer_shell = registry.bind(layer_name, ZwlrLayerShellV1, min(layer_version, 4))
 
-        output = None
-        if "wl_output" in globals_by_name:
-            output_name, output_version = globals_by_name["wl_output"]
-            output = registry.bind(output_name, WlOutput, min(output_version, 1))
+        outputs: list[Any] = []
+        for output_name, output_version in globals_by_name.get("wl_output", []):
+            outputs.append(registry.bind(output_name, WlOutput, min(output_version, 1)))
+        if output is not None and (output < 0 or output >= len(outputs)):
+            raise IndexError(
+                f"Output index {output} is unavailable; compositor advertised "
+                f"{len(outputs)} output(s)"
+            )
+        selected_output = outputs[output or 0] if outputs else None
 
-        return WaylandGlobals(display, compositor, layer_shell, output)
+        return WaylandGlobals(
+            display, compositor, layer_shell, selected_output, outputs
+        )
     except Exception:
         display.disconnect()
         raise

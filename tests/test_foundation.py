@@ -2,7 +2,14 @@ from typing import Any, cast
 
 import pytest
 
-from wayshade import WallpaperSurface, WallpaperSurfaceError, WaylandUnavailableError
+from wayshade import (
+    Image,
+    ImageError,
+    Shader,
+    WallpaperSurface,
+    WallpaperSurfaceError,
+    WaylandUnavailableError,
+)
 from wayshade._protocol.wlr_layer_shell_unstable_v1.zwlr_layer_shell_v1 import (
     ZwlrLayerShellV1,
 )
@@ -18,6 +25,27 @@ def test_layer_shell_bindings_are_packaged() -> None:
 
 def test_error_is_public() -> None:
     assert issubclass(WaylandUnavailableError, RuntimeError)
+
+
+def test_image_loads_as_rgba8(tmp_path: Any) -> None:
+    from PIL import Image as PillowImage
+
+    path = tmp_path / "sample.png"
+    PillowImage.new("RGB", (2, 3), (10, 20, 30)).save(path)
+    image = Image.from_file(path)
+    assert (image.width, image.height) == (2, 3)
+    assert len(image.pixels or b"") == 2 * 3 * 4
+
+
+def test_image_missing_file_is_actionable() -> None:
+    with pytest.raises(ImageError, match="Could not load image"):
+        Image.from_file("does-not-exist.png")
+
+
+def test_shader_uniform_state_is_persistent() -> None:
+    shader = Shader("void main() {}")
+    assert shader.set("amount", 1.5).set({"resolution": (2.0, 3.0)}) is shader
+    assert shader.uniforms == {"amount": 1.5, "resolution": (2.0, 3.0)}
 
 
 def test_wallpaper_waits_for_frame_callback() -> None:

@@ -125,15 +125,16 @@ class WallpaperSurface:
 def create_wallpaper(
     display_name: str | None = None,
     namespace: str = "wayshade",
+    output: int | None = None,
 ) -> WallpaperSurface:
     """Create and configure a fullscreen background surface.
 
     The first implementation targets the first output advertised by the
-    compositor. Passing ``None`` to layer-shell lets the compositor select that
-    output according to its normal policy.
+    compositor, or the numeric output selected by ``output``. Passing ``None``
+    to layer-shell lets the compositor select the default output.
     """
 
-    globals = discover_globals(display_name)
+    globals = discover_globals(display_name, output=output)
     try:
         surface = globals.compositor.create_surface()
         layer_surface = globals.layer_shell.get_layer_surface(

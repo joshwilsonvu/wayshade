@@ -44,12 +44,12 @@ layer shell.
 
 ## Status and handoff
 
-The project is partway through **Phase 0: Graphics feasibility spike** from
-[`plan.md`](plan.md). The dependency setup, protocol binding, compositor
-connection, global discovery, wallpaper surface, EGL context creation,
-compositor-paced presentation, and offscreen texture sampling are implemented.
-The project is ready to move from the feasibility spike into the rendering
-core.
+The project has completed **Phase 0: Graphics feasibility spike** and is
+continuing through Phase 1 and Phase 2 of [`plan.md`](plan.md). The dependency
+setup, protocol binding, compositor connection, global discovery, wallpaper
+surface, EGL context creation, compositor-paced presentation, offscreen texture
+sampling, image loading, sampler bindings, and intermediate image targets are
+implemented.
 
 ### Working pieces
 
@@ -134,24 +134,25 @@ does not provide or select an OpenGL driver. GPU driver selection remains the
 host distribution's responsibility, and Wayshade does not require a `nixGL`
 wrapper.
 
-### Next implementation step: Phase 1 rendering core
+### Phase 1 rendering core
 
 The Phase 0 feasibility spike is complete. Live validation on Niri confirmed:
 background layering, full-output coverage at `2048 × 1280`, EGL presentation,
 frame callbacks, offscreen framebuffer rendering, texture sampling, and clean
 resource release.
 
-Begin Phase 1 with the explicit renderer/session foundation:
+The first Phase 1 slice now provides:
 
-1. Define the renderer and wallpaper target ownership model.
-2. Add output selection by default/primary output and numeric index.
-3. Implement fragment shader loading from strings and files.
-4. Implement fullscreen rendering and scalar/vector uniform state.
-5. Move the current low-level presentation behavior behind that renderer API.
+1. An explicit `Renderer` session and wallpaper `Target`.
+2. Default/primary output selection and numeric output indexes.
+3. Fragment shader loading from strings and UTF-8 files.
+4. Fullscreen rendering with persistent scalar/vector uniform state.
+5. Compositor-paced presentation through `Renderer.draw()` and
+   `Renderer.wait_for_frame()`.
 
-The internal `offscreen_test()` and `present_solid()` methods remain feasibility
-helpers until the public `Renderer`, `Shader`, `Image`, and `Target` types are
-implemented.
+`offscreen_test()` and `present_solid()` remain low-level feasibility helpers.
+Shader program caching, richer sampler configuration, and the convenience loop
+remain follow-up work.
 
 ### Decisions already made
 
@@ -169,17 +170,14 @@ implemented.
 
 ### Known limitations
 
-- No higher-level renderer, shader, or image API yet; the low-level EGL,
-  frame-callback, and offscreen texture probes are complete.
-- No shader compilation or uniform handling.
-- No image loading into GPU textures.
-- No frame callback loop.
-- No output index/name selection.
+- No shader program caching; programs are compiled per draw currently.
+- No convenience `run()` frame loop yet.
+- No output name selection, hotplug, or layout migration.
 - No hotplug or layout migration.
 - No multi-monitor support.
 - The current generated bindings follow PyWayland's protocol runtime API;
   changes to the PyWayland major API should be treated as compatibility work.
 
 The implementation plan remains the source of truth for the intended API and
-phase boundaries. The next session should begin with the EGL bridge, not with
-multipass rendering or the higher-level convenience API.
+phase boundaries. The next session should focus on shader/resource lifetime,
+program caching, stronger GPU-path tests, and the Phase 3 convenience loop.

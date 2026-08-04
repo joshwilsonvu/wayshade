@@ -48,8 +48,10 @@ class EglPresenter:
     _gl: Any = None
     _wayland_egl: Any = None
     closed: bool = False
+    images: list[Any] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
+        self.images = []
         self._create()
 
     def _create(self) -> None:
@@ -152,6 +154,135 @@ class EglPresenter:
         self._gl.glClear(self._gl.GL_COLOR_BUFFER_BIT)
         if not self._egl.eglSwapBuffers(self.egl_display, self.egl_surface):
             raise self._error("eglSwapBuffers")
+
+    def ensure_image(self, image: Any) -> None:
+        """Create the texture and framebuffer backing an Image."""
+        if image.texture is not None:
+            return
+        gl = self._gl
+        image.texture = gl.glGenTextures(1)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, image.texture)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+        gl.glTexImage2D(
+            gl.GL_TEXTURE_2D,
+            0,
+            gl.GL_RGBA,
+            image.width,
+            image.height,
+            0,
+            gl.GL_RGBA,
+            gl.GL_UNSIGNED_BYTE,
+            image.pixels,
+        )
+        image.framebuffer = gl.glGenFramebuffers(1)
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, image.framebuffer)
+        gl.glFramebufferTexture2D(
+            gl.GL_FRAMEBUFFER,
+            gl.GL_COLOR_ATTACHMENT0,
+            gl.GL_TEXTURE_2D,
+            image.texture,
+            0,
+        )
+        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) != gl.GL_FRAMEBUFFER_COMPLETE:
+            raise EglPresentationError("Image framebuffer is incomplete")
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+        self.images.append(image)
+
+    def render_shader(
+        self, shader: Any, textures: dict[str, Any], target: Any, *, swap: bool
+    ) -> None:
+        """Compile and draw a public fragment shader fullscreen."""
+        if self.closed:
+            raise EglPresentationError("EGL presenter is closed")
+        gl = self._gl
+        vertex_buffer = gl.glGenBuffers(1)
+        program = 0
+        shader_objects: list[int] = []
+        try:
+            vertex_source = """
+                #version 120
+                attribute vec2 position;
+                varying vec2 uv;
+                void main() {
+                    uv = position * 0.5 + 0.5;
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }
+            """
+            for shader_type, source in (
+                (gl.GL_VERTEX_SHADER, vertex_source),
+                (gl.GL_FRAGMENT_SHADER, shader.source),
+            ):
+                shader_object = gl.glCreateShader(shader_type)
+                gl.glShaderSource(shader_object, source)
+                gl.glCompileShader(shader_object)
+                if not gl.glGetShaderiv(shader_object, gl.GL_COMPILE_STATUS):
+                    log = gl.glGetShaderInfoLog(shader_object)
+                    if isinstance(log, bytes):
+                        log = log.decode(errors="replace")
+                    raise EglPresentationError(f"Shader compilation failed: {log}")
+                shader_objects.append(shader_object)
+
+            program = gl.glCreateProgram()
+            for shader_object in shader_objects:
+                gl.glAttachShader(program, shader_object)
+            gl.glBindAttribLocation(program, 0, "position")
+            gl.glLinkProgram(program)
+            if not gl.glGetProgramiv(program, gl.GL_LINK_STATUS):
+                log = gl.glGetProgramInfoLog(program)
+                if isinstance(log, bytes):
+                    log = log.decode(errors="replace")
+                raise EglPresentationError(f"Shader link failed: {log}")
+
+            vertices = (ctypes.c_float * 8)(-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0)
+            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, vertex_buffer)
+            gl.glBufferData(
+                gl.GL_ARRAY_BUFFER, ctypes.sizeof(vertices), vertices, gl.GL_STATIC_DRAW
+            )
+            framebuffer = 0
+            width, height = self.width, self.height
+            if not hasattr(target, "surface"):
+                self.ensure_image(target)
+                framebuffer = target.framebuffer
+                width, height = target.width, target.height
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, framebuffer)
+            gl.glViewport(0, 0, width, height)
+            gl.glUseProgram(program)
+            for unit, (name, image) in enumerate(textures.items()):
+                self.ensure_image(image)
+                gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
+                gl.glBindTexture(gl.GL_TEXTURE_2D, image.texture)
+                location = gl.glGetUniformLocation(program, name)
+                if location < 0:
+                    raise EglPresentationError(
+                        f"Shader texture uniform {name!r} was not found or is not active"
+                    )
+                gl.glUniform1i(location, unit)
+            for name, value in shader.uniforms.items():
+                location = gl.glGetUniformLocation(program, name)
+                if location < 0:
+                    raise EglPresentationError(
+                        f"Shader uniform {name!r} was not found or is not active"
+                    )
+                _set_uniform(gl, location, value)
+            gl.glEnableVertexAttribArray(0)
+            gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, None)
+            gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
+            gl.glDisableVertexAttribArray(0)
+            if swap and not self._egl.eglSwapBuffers(
+                self.egl_display, self.egl_surface
+            ):
+                raise self._error("eglSwapBuffers")
+        finally:
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, 0)
+            if program:
+                gl.glDeleteProgram(program)
+            for shader_object in shader_objects:
+                gl.glDeleteShader(shader_object)
+            gl.glDeleteBuffers(1, [vertex_buffer])
 
     def offscreen_test_and_swap(self) -> None:
         """Render a texture-backed test image, sample it, and present it.
@@ -289,9 +420,38 @@ class EglPresenter:
             if self.egl_context not in (None, self._egl.EGL_NO_CONTEXT):
                 self._egl.eglDestroyContext(self.egl_display, self.egl_context)
             self._egl.eglTerminate(self.egl_display)
+        if self._gl is not None:
+            for image in self.images or []:
+                if image.framebuffer is not None:
+                    self._gl.glDeleteFramebuffers(1, [image.framebuffer])
+                if image.texture is not None:
+                    self._gl.glDeleteTextures(1, [image.texture])
+                image.framebuffer = None
+                image.texture = None
         if self.wl_window and self._wayland_egl is not None:
             self._wayland_egl.wl_egl_window_destroy(self.wl_window)
         self.closed = True
+
+
+def _set_uniform(gl: Any, location: int, value: Any) -> None:
+    if isinstance(value, bool):
+        gl.glUniform1i(location, int(value))
+    elif isinstance(value, int):
+        gl.glUniform1i(location, value)
+    elif isinstance(value, float):
+        gl.glUniform1f(location, value)
+    elif len(value) == 1:
+        gl.glUniform1f(location, float(value[0]))
+    elif len(value) == 2:
+        gl.glUniform2f(location, float(value[0]), float(value[1]))
+    elif len(value) == 3:
+        gl.glUniform3f(location, float(value[0]), float(value[1]), float(value[2]))
+    elif len(value) == 4:
+        gl.glUniform4f(
+            location, float(value[0]), float(value[1]), float(value[2]), float(value[3])
+        )
+    else:
+        raise EglPresentationError("Unsupported shader uniform value")
 
 
 def _load_egl() -> Any:
