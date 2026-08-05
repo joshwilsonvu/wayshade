@@ -1,21 +1,23 @@
+#version 120
+
+uniform float iTime;
+uniform sampler2D moon;
+uniform vec2 iResolution;
+varying vec2 uv;
+
 // controls
-#define DISTANCE true
-#define STARS true
-#define LIBRATION true
-#define TEXTURE true
-#define SURFACE false
-#define SURGE true
+#define DISTANCE false
+#define STARS false
+#define LIBRATION false
+#define SURGE false
 #define ANTIALIAS false
 
 // constants
 #define SUN_ROTATION 0.03
-#define MOUSE_ROTATION 0.04
 #define CAMERA_DISTANCE 2.8
 #define AMBIENT 0.02
 #define PERIGEE 362600.0
 #define APOGEE 405400.0
-#define HASHSCALE1 .1031
-#define HASHSCALE3 vec3(.1031, .1030, .0973)
 #define PI 3.14159265359
 
 // utils
@@ -31,84 +33,6 @@ float hash(vec2 p) {
   p = fract(p * vec2(127.1, 311.7));
   p += dot(p, p + 74.39);
   return fract(p.x * p.y);
-}
-float hash13(vec3 p3)
-{
-  p3 = fract(p3 * HASHSCALE1);
-  p3 += dot(p3, p3.yzx + 19.19);
-  return fract((p3.x + p3.y) * p3.z);
-}
-vec3 hash33(vec3 p) {
-  p = fract(p * HASHSCALE3);
-  p += dot(p, p.yxz + 19.19);
-  return fract((p.xxy + p.yxx) * p.zyx);
-}
-
-float Noise(in vec3 p)
-{
-  vec3 i = floor(p);
-  vec3 f = fract(p);
-  f *= f * (3.0 - 2.0 * f);
-
-  return mix(
-    mix(mix(hash13(i + vec3(0., 0., 0.)), hash13(i + vec3(1., 0., 0.)), f.x),
-      mix(hash13(i + vec3(0., 1., 0.)), hash13(i + vec3(1., 1., 0.)), f.x),
-      f.y),
-    mix(mix(hash13(i + vec3(0., 0., 1.)), hash13(i + vec3(1., 0., 1.)), f.x),
-      mix(hash13(i + vec3(0., 1., 1.)), hash13(i + vec3(1., 1., 1.)), f.x),
-      f.y),
-    f.z);
-}
-const mat3 m = mat3(0.00, 0.80, 0.60,
-    -0.80, 0.36, -0.48,
-    -0.60, -0.48, 0.64) * 1.7;
-float FBM(vec3 p)
-{
-  float f;
-
-  f = 0.5000 * Noise(p);
-  p = m * p;
-  f += 0.2500 * Noise(p);
-  p = m * p;
-  f += 0.1250 * Noise(p);
-  p = m * p;
-  f += 0.0625 * Noise(p);
-  p = m * p;
-  f += 0.03125 * Noise(p);
-  p = m * p;
-  f += 0.015625 * Noise(p);
-  return f;
-}
-
-// procedural craters based on https://www.shadertoy.com/view/MtjGRD
-float craters(vec3 x) {
-  vec3 p = floor(x);
-  vec3 f = fract(x);
-  float va = 0.0;
-  float wt = 0.0;
-  for (int i = -2; i <= 2; i++)
-    for (int j = -2; j <= 2; j++)
-      for (int k = -2; k <= 2; k++) {
-        vec3 g = vec3(i, j, k);
-        vec3 o = 0.8 * hash33(p + g);
-        float d = distance(f - g, o);
-        float w = exp(-4.0 * d);
-        va += w * sin(2.0 * PI * sqrt(d));
-        wt += w;
-      }
-  return abs(va / wt);
-}
-
-float moonSurface(vec3 p) {
-  float result = 0.0;
-  for (int i = 0; i < 5; i++) {
-    float freq = 0.6 * pow(2.2, i);
-    float c = craters(freq * p);
-    float n = 0.4 * exp(-3.0 * c) * FBM(10.0 * p);
-    float w = clamp(3.0 * pow(0.4, i), 0.0, 1.0);
-    result += w * (c + n);
-  }
-  return pow(result, 3.0);
 }
 
 // Returns nearest hit distance along the ray, or -1.0 on miss.
@@ -164,11 +88,9 @@ vec3 starField(vec3 rd, float time) {
   return vec3(stars);
 }
 
-uniform 
-
 void main() {
   // Normalized device coordinates, centered, aspect-corrected
-  vec2 ndc = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;
+  vec2 ndc = uv - (0.5 * iResolution.xy) / iResolution.y;
   float time = iTime * SUN_ROTATION;
 
   vec3 cameraDir = vec3(0.0, 0.0, 1.0);
@@ -190,9 +112,9 @@ void main() {
   float hitDistance = hitUnitSphere(cameraPos, rayDirection);
   if (hitDistance < 0.0) {
     if (STARS) {
-      fragColor = vec4(starField(rayDirection, time), 1.0);
+      gl_FragColor = vec4(starField(rayDirection, time), 1.0);
     } else {
-      fragColor = vec4(0.0, 0.0, 0.0, 1.0); // black space background
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // black space background
     }
     return;
   }
@@ -213,17 +135,9 @@ void main() {
       0.5 + atan(libPos.z, libPos.x) / (2.0 * PI),
       0.5 + asin(clamp(libPos.y, -1.0, 1.0)) / PI
     );
-  // procedural moon surface instead of texture lookup
-  vec3 moonColor;
-  if (TEXTURE) {
-    // read from iChannel0, a sampler2d, from position `libPos`
-    moonColor = texture(iChannel0, texUV).rgb;
-  } else if (SURFACE) {
-    float surf = moonSurface(libPos);
-    moonColor = mix(vec3(0.82, 0.81, 0.8), vec3(0.22, 0.21, 0.2), smoothstep(0., 4., surf));
-  } else {
-    moonColor = vec3(0.22, 0.21, 0.2);
-  }
+
+  // moon surface texture lookup
+  vec3 moonColor = texture2D(moon, texUV).rgb;
 
   // Sun + matte surface + tiny ambient so the dark side isn't pitch black
   float NdotSun = max(dot(normal, sunDir), 0.0);
@@ -232,12 +146,12 @@ void main() {
   float matte = NdotSun / (NdotSun + NdotCam + 1e-4) * 2.0;
   float surge = SURGE ? oppositionSurge(cosPhase) : 0.0;
 
-  fragColor = vec4(moonColor * (AMBIENT + matte + surge), 1.0);
+  gl_FragColor = vec4(moonColor * (AMBIENT + matte + surge), 1.0);
 
-  fragColor.rgb = pow(fragColor.rgb, vec3(0.8));
+  // gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(0.8));
 
   if (ANTIALIAS) {
     // Blend black the edge of the sphere
-    fragColor.rgb *= (1.0 - smoothstep(0.95, 1.0, length(normal.xy)));
+    gl_FragColor.rgb *= (1.0 - smoothstep(0.95, 1.0, length(normal.xy)));
   }
 }
