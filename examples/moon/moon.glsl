@@ -6,14 +6,14 @@ uniform vec2 iResolution;
 varying vec2 uv;
 
 // controls
-#define DISTANCE false
-#define STARS false
-#define LIBRATION false
-#define SURGE false
+#define DISTANCE true
+#define STARS true
+#define LIBRATION true
+#define SURGE true
 #define ANTIALIAS false
 
 // constants
-#define SUN_ROTATION 0.03
+#define SUN_ROTATION 0.1
 #define CAMERA_DISTANCE 2.8
 #define AMBIENT 0.02
 #define PERIGEE 362600.0
@@ -89,8 +89,9 @@ vec3 starField(vec3 rd, float time) {
 }
 
 void main() {
-  // Normalized device coordinates, centered, aspect-corrected
-  vec2 ndc = uv - (0.5 * iResolution.xy) / iResolution.y;
+  // Center UVs and correct for screen aspect ratio
+  vec2 ndc = (uv - 0.5) * (iResolution.xy / iResolution.y);
+
   float time = iTime * SUN_ROTATION;
 
   vec3 cameraDir = vec3(0.0, 0.0, 1.0);
