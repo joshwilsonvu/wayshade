@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import math
 import signal
 import threading
 import time
@@ -73,6 +74,7 @@ class Renderer:
         self.output = output
         self.target = Target(wallpaper)
         self._images: list[Image] = []
+        self._last_capped_draw: float | None = None
         self.closed = False
         self._exit_cleanup = self.close
         atexit.register(self._exit_cleanup)
@@ -96,10 +98,31 @@ class Renderer:
         shader: Shader | Image,
         *,
         to: Target | WallpaperSurface | Image | None = None,
+        max_fps: float | None = None,
     ) -> Image | None:
-        """Draw a shader or image, producing an intermediate image by default."""
+        """Draw a shader or image, producing an intermediate image by default.
+
+        When ``max_fps`` is provided, wait for the next available frame slot
+        before drawing. The first capped draw is immediate; later draws are
+        spaced by at least ``1 / max_fps`` seconds.
+        """
         if self.closed:
             raise RendererError("Renderer is closed")
+        interval: float | None = None
+        if max_fps is not None:
+            if max_fps <= 0 or not math.isfinite(max_fps):
+                raise ValueError("max_fps must be a positive finite number")
+            interval = 1.0 / max_fps
+
+        def wait_for_slot() -> None:
+            if interval is None or self._last_capped_draw is None:
+                return
+            while True:
+                remaining = self._last_capped_draw + interval - time.monotonic()
+                if remaining <= 0:
+                    return
+                time.sleep(remaining)
+
         if isinstance(shader, Image):
             source = shader
             shader = self.load_shader("""
@@ -135,12 +158,16 @@ class Renderer:
         else:
             presenter = self._presenter()
         if isinstance(destination, Image):
+            wait_for_slot()
             presenter.render_shader(shader, destination, swap=False)
+            if interval is not None:
+                self._last_capped_draw = time.monotonic()
             return destination
         if destination.frame_pending:
             raise RendererError(
                 "A frame is already pending; call wait_for_frame() first"
             )
+        wait_for_slot()
         destination._request_frame()
         try:
             presenter.render_shader(shader, destination, swap=True)
@@ -150,6 +177,8 @@ class Renderer:
             destination.frame_callback = None
             destination.frame_pending = False
             raise
+        if interval is not None:
+            self._last_capped_draw = time.monotonic()
 
     def _presenter(self) -> Any:
         if self.wallpaper.presenter is None:

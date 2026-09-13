@@ -10,10 +10,10 @@ varying vec2 uv;
 #define STARS true
 #define LIBRATION true
 #define SURGE true
-#define ANTIALIAS false
+#define ANTIALIAS true
 
 // constants
-#define SUN_ROTATION 0.1
+#define SUN_ROTATION 0.03
 #define CAMERA_DISTANCE 2.8
 #define AMBIENT 0.02
 #define PERIGEE 362600.0
@@ -58,7 +58,7 @@ float oppositionSurge(float cosPhase) {
   return surge;
 }
 
-vec3 starField(vec3 rd, float time) {
+float starField(vec3 rd, float time) {
   // Rotate star field leftward in sync with sun
   vec3 dir = rotateY(rd, -time);
   float u = 0.5 + atan(dir.z, dir.x) / (2.0 * PI);
@@ -85,7 +85,7 @@ vec3 starField(vec3 rd, float time) {
     stars += smoothstep(0.04, 0.0, d) * hash(cell + 17.8) * 0.4;
   }
 
-  return vec3(stars);
+  return stars;
 }
 
 void main() {
@@ -113,7 +113,7 @@ void main() {
   float hitDistance = hitUnitSphere(cameraPos, rayDirection);
   if (hitDistance < 0.0) {
     if (STARS) {
-      gl_FragColor = vec4(starField(rayDirection, time), 1.0);
+      gl_FragColor = vec4(vec3(starField(rayDirection, time)), 1.0);
     } else {
       gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // black space background
     }
@@ -153,6 +153,6 @@ void main() {
 
   if (ANTIALIAS) {
     // Blend black the edge of the sphere
-    gl_FragColor.rgb *= (1.0 - smoothstep(0.95, 1.0, length(normal.xy)));
+    gl_FragColor.rgb *= smoothstep(0.2, 0.3, NdotCam);
   }
 }

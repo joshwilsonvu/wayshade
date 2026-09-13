@@ -127,6 +127,59 @@ def test_renderer_run_is_frame_callback_paced() -> None:
     assert frames[1].delta_time >= 0
 
 
+def test_renderer_draw_caps_frame_rate(monkeypatch: pytest.MonkeyPatch) -> None:
+    import wayshade.renderer as renderer_module
+
+    class Wallpaper:
+        width = 2
+        height = 2
+        frame_pending = False
+
+        def close(self) -> None:
+            pass
+
+    class Presenter:
+        def ensure_image(self, _image: Image) -> None:
+            pass
+
+        def render_shader(self, _shader: Shader, _image: Image, *, swap: bool) -> None:
+            assert not swap
+
+    clock = [0.0]
+    sleeps: list[float] = []
+    monkeypatch.setattr(renderer_module.time, "monotonic", lambda: clock[0])
+
+    def sleep(duration: float) -> None:
+        sleeps.append(duration)
+        clock[0] += duration
+
+    monkeypatch.setattr(renderer_module.time, "sleep", sleep)
+    renderer = Renderer(Wallpaper())  # type: ignore[arg-type]
+    renderer._presenter = lambda: Presenter()  # type: ignore[method-assign]
+    shader = Shader("void main() {}")
+
+    renderer.draw(shader, max_fps=30)
+    clock[0] = 0.01
+    renderer.draw(shader, max_fps=30)
+
+    assert sleeps == pytest.approx([1 / 30 - 0.01])
+    renderer.close()
+
+
+def test_renderer_draw_rejects_invalid_frame_rate() -> None:
+    class Wallpaper:
+        width = 1
+        height = 1
+
+        def close(self) -> None:
+            pass
+
+    renderer = Renderer(Wallpaper())  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="positive finite"):
+        renderer.draw(Shader("void main() {}"), max_fps=0)
+    renderer.close()
+
+
 def test_renderer_run_handles_keyboard_interrupt() -> None:
     class Wallpaper:
         width = 1

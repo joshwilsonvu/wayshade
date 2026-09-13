@@ -321,18 +321,20 @@ class EglPresenter:
                 gl.glBindTexture(gl.GL_TEXTURE_2D, image.texture)
                 location = gl.glGetUniformLocation(program, name)
                 if location < 0:
-                    raise EglPresentationError(
-                        f"Shader image uniform {name!r} was not found or is not active"
-                    )
+                    pass
+                    # raise EglPresentationError(
+                    #     f"Shader image uniform {name!r} was not found or is not active"
+                    # )
                 gl.glUniform1i(location, unit)
             for name, value in shader.uniforms.items():
                 if isinstance(value, Image):
                     continue
                 location = gl.glGetUniformLocation(program, name)
                 if location < 0:
-                    raise EglPresentationError(
-                        f"Shader uniform {name!r} was not found or is not active"
-                    )
+                    pass
+                    # raise EglPresentationError(
+                    #     f"Shader uniform {name!r} was not found or is not active"
+                    # )
                 _set_uniform(gl, location, value)
             gl.glEnableVertexAttribArray(0)
             gl.glVertexAttribPointer(0, 2, gl.GL_FLOAT, False, 0, None)

@@ -163,7 +163,7 @@ application can copy the frame values into its shader uniforms explicitly:
 ```python
 def update(frame: wayshade.Frame) -> None:
     shader.set(frame.uniforms())
-    renderer.draw(shader, to=renderer.wallpaper)
+    renderer.draw(shader, to=renderer.wallpaper, max_fps=30)
 
 renderer.run(update=update)
 ```
@@ -182,10 +182,13 @@ shader contract; applications may rename or select values before calling
 - `output`: the numeric output index supplied to `create()`, if any.
 
 The first update runs immediately. Later updates wait for the previous draw's
-Wayland frame callback; the loop does not busy-loop. Returning `False` from the
-callback stops the loop. `Renderer.run()` also handles Ctrl-C and restores the
-caller's original SIGINT handler, including when the interruption occurs while
-PyWayland is blocked in native dispatch.
+Wayland frame callback; the loop does not busy-loop. Pass `max_fps` to
+`Renderer.draw()` to cap rendering below the compositor refresh rate. The first
+capped draw is immediate, and subsequent draws wait for the next time slot (for
+example, `renderer.draw(shader, to=renderer.wallpaper, max_fps=30)`). Returning
+`False` from the callback stops the loop. `Renderer.run()` also handles Ctrl-C
+and restores the caller's original SIGINT handler, including when the
+interruption occurs while PyWayland is blocked in native dispatch.
 
 ## Examples
 

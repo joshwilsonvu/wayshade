@@ -17,6 +17,6 @@ with wayshade.create() as renderer:
     def update(frame: wayshade.Frame) -> None:
         moon_shader.set("iResolution", (frame.width, frame.height))
         moon_shader.set("iTime", frame.time)
-        renderer.draw(moon_shader, to=renderer.wallpaper)
+        renderer.draw(moon_shader, to=renderer.wallpaper, max_fps=24)
 
     renderer.run(update=update)
